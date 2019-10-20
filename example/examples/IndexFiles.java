@@ -1,4 +1,4 @@
-package tests;
+package examples;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -23,8 +23,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-
-import map.MapPostingsFormat;
+import org.rsankar.lucenecodecs.mapcodec.MapPostingsFormat;
 
 /**
  * Index all text files under a directory. The first paragraph is indexed with

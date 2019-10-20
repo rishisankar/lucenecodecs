@@ -1,4 +1,4 @@
-package map;
+package org.rsankar.lucenecodecs.mapcodec;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -21,8 +21,7 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
-
-import robinhood.RobinHoodHashMap;
+import org.rsankar.lucenecodecs.robinhood.RobinHoodHashMap;
 
 public class MapFieldsReader extends FieldsProducer {
 

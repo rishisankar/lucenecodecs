@@ -1,4 +1,4 @@
-package map;
+package org.rsankar.lucenecodecs.mapcodec;
 
 import java.io.IOException;
 

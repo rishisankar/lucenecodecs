@@ -1,4 +1,4 @@
-package robinhood;
+package org.rsankar.lucenecodecs.robinhood;
 
 import java.nio.ByteBuffer;
 import java.util.Random;
