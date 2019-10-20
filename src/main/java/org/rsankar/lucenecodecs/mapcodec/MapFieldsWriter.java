@@ -3,10 +3,11 @@ package org.rsankar.lucenecodecs.mapcodec;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.NormsProducer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.codecs.lucene50.Lucene50PostingsFormat.IntBlockTermState;
+import org.apache.lucene.codecs.lucene50.BlockTermStateHelper;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -54,10 +55,10 @@ public class MapFieldsWriter extends FieldsConsumer {
         }
 
         long key = Long.valueOf(term.utf8ToString().hashCode());
-        IntBlockTermState bts = (IntBlockTermState) writer.writeTerm(term, termsEnum, docsSeen, norms);
+        BlockTermState bts = writer.writeTerm(term, termsEnum, docsSeen, norms);
         sumTotalTermFreq += bts.totalTermFreq;
         sumDocFreq += bts.docFreq;
-        ByteBuffer buffer = buildBuffer(key, bts);
+        ByteBuffer buffer = BlockTermStateHelper.buildBuffer(key, bts);
         byte[] arr = new byte[56];
         buffer.position(0);
         buffer.get(arr);
@@ -94,19 +95,6 @@ public class MapFieldsWriter extends FieldsConsumer {
     }
 
     return count;
-  }
-
-  private ByteBuffer buildBuffer(long key, IntBlockTermState bts) {
-    ByteBuffer b = ByteBuffer.allocateDirect(56);
-    b.putInt(bts.docFreq);
-    b.putLong(bts.totalTermFreq);
-    b.putLong(bts.docStartFP);
-    b.putLong(bts.skipOffset);
-    b.putInt(bts.singletonDocID);
-    b.putLong(bts.posStartFP);
-    b.putLong(bts.payStartFP);
-    b.putLong(bts.lastPosBlockOffset);
-    return b;
   }
 
   @Override

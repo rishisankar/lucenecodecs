@@ -1,7 +1,6 @@
 package org.rsankar.lucenecodecs.mapcodec;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -9,7 +8,7 @@ import java.util.Map;
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsReaderBase;
-import org.apache.lucene.codecs.lucene50.Lucene50PostingsFormat.IntBlockTermState;
+import org.apache.lucene.codecs.lucene50.BlockTermStateHelper;
 import org.apache.lucene.index.BaseTermsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.ImpactsEnum;
@@ -154,8 +153,8 @@ public class MapFieldsReader extends FieldsProducer {
 
     @Override
     public String toString() {
-      return getClass().getSimpleName() + "(terms=" + termCount + ",postings=" + sumDocFreq + ",positions="
-          + sumTotalTermFreq + ",docs=" + docCount + ")";
+      return getClass().getSimpleName() + "(terms=" + termCount + ",postings=" + sumDocFreq
+          + ",positions=" + sumTotalTermFreq + ",docs=" + docCount + ")";
     }
   }
 
@@ -179,7 +178,7 @@ public class MapFieldsReader extends FieldsProducer {
       long key = Long.valueOf(text.utf8ToString().hashCode());
       byte[] pointer = map.get(key);
       if (pointer != null) {
-        currentState = buildIntBlockTermState(pointer);
+        currentState = BlockTermStateHelper.buildIntBlockTermState(pointer);
         currentTerm = text;
         return true;
       } else {
@@ -240,23 +239,6 @@ public class MapFieldsReader extends FieldsProducer {
     public void seekExact(long ord) throws IOException {
       throw new RuntimeException("seexExact(long ord) called in MapFieldsReader.MapTermsEnum");
     }
-  }
-
-  private static IntBlockTermState buildIntBlockTermState(byte[] pointer) {
-    IntBlockTermState ibts = new IntBlockTermState();
-
-    ByteBuffer b = ByteBuffer.wrap(pointer);
-
-    ibts.docFreq = b.getInt();
-    ibts.totalTermFreq = b.getLong();
-    ibts.docStartFP = b.getLong();
-    ibts.skipOffset = b.getLong();
-    ibts.singletonDocID = b.getInt();
-    ibts.posStartFP = b.getLong();
-    ibts.payStartFP = b.getLong();
-    ibts.lastPosBlockOffset = b.getLong();
-
-    return ibts;
   }
 
 }

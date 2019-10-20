@@ -5,6 +5,9 @@ import java.util.Random;
 
 public class RobinHoodHashMap {
 
+  // Increase capacity by extraSpacePercent to make key's dists smaller on average
+  static final int extraSpacePercent = 20;
+
   static final int VALUE_SIZE = 56;
   static final int KEY_SIZE = 8;
   static final int TOTAL_SIZE = VALUE_SIZE + KEY_SIZE + 4;
@@ -13,13 +16,9 @@ public class RobinHoodHashMap {
   private ByteBuffer buffer;
   private int capacity;
 
-  public RobinHoodHashMap() {
-    this(DEFAULT_CAPACITY);
-  }
-
   public RobinHoodHashMap(int capacity) {
     buffer = ByteBuffer.allocateDirect(capacity * TOTAL_SIZE);
-    this.capacity = capacity;
+    this.capacity = capacity * (100 + extraSpacePercent) / 100;
   }
 
   public RobinHoodHashMap(byte[] array) {
@@ -126,7 +125,7 @@ public class RobinHoodHashMap {
 
   // Unit test
   public static void main(String[] args) {
-    RobinHoodHashMap map = new RobinHoodHashMap();
+    RobinHoodHashMap map = new RobinHoodHashMap(32);
     Random r = new Random();
 
     byte[] pointer1 = new byte[56];
