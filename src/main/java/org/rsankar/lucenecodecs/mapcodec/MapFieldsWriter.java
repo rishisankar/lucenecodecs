@@ -20,100 +20,97 @@ import org.rsankar.lucenecodecs.robinhood.RobinHoodHashMap;
 
 public class MapFieldsWriter extends FieldsConsumer {
 
-	private SegmentWriteState state;
-	private PostingsWriterBase writer;
-	private String segmentName;
+  private SegmentWriteState state;
+  private PostingsWriterBase writer;
+  private String segmentName;
 
-	public MapFieldsWriter(SegmentWriteState state, PostingsWriterBase writer) {
-		this.state = state;
-		this.writer = writer;
-		this.segmentName = state.segmentInfo.name;
-	}
+  public MapFieldsWriter(SegmentWriteState state, PostingsWriterBase writer) {
+    this.state = state;
+    this.writer = writer;
+    this.segmentName = state.segmentInfo.name;
+  }
 
-	@Override
-	public void write(Fields fields, NormsProducer norms) throws IOException {
-		FieldInfos fieldInfos = state.fieldInfos;
-		for (String field : fields) {
-			FixedBitSet docsSeen = new FixedBitSet(state.segmentInfo.maxDoc());
-			long sumTotalTermFreq = 0;
-			long sumDocFreq = 0;
-			Terms terms = fields.terms(field);
-			if (terms == null) {
-				continue;
-			}
-			int termCount = countTerms(terms);
-			RobinHoodHashMap map = new RobinHoodHashMap(termCount);
-			FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
-			writer.setField(fieldInfo);
+  @Override
+  public void write(Fields fields, NormsProducer norms) throws IOException {
+    FieldInfos fieldInfos = state.fieldInfos;
+    for (String field : fields) {
+      FixedBitSet docsSeen = new FixedBitSet(state.segmentInfo.maxDoc());
+      long sumTotalTermFreq = 0;
+      long sumDocFreq = 0;
+      Terms terms = fields.terms(field);
+      if (terms == null) {
+        continue;
+      }
+      int termCount = countTerms(terms);
+      RobinHoodHashMap map = new RobinHoodHashMap(termCount);
+      FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
+      writer.setField(fieldInfo);
 
-			TermsEnum termsEnum = terms.iterator();
-			while (true) {
-				BytesRef term = termsEnum.next();
-				if (term == null) {
-					break;
-				}
+      TermsEnum termsEnum = terms.iterator();
+      while (true) {
+        BytesRef term = termsEnum.next();
+        if (term == null) {
+          break;
+        }
 
-				long key = Long.valueOf(term.utf8ToString().hashCode());
-				IntBlockTermState bts = (IntBlockTermState) writer
-						.writeTerm(term, termsEnum, docsSeen, norms);
-				sumTotalTermFreq += bts.totalTermFreq;
-				sumDocFreq += bts.docFreq;
-				ByteBuffer buffer = buildBuffer(key, bts);
-				byte[] arr = new byte[56];
-				buffer.position(0);
-				buffer.get(arr);
+        long key = Long.valueOf(term.utf8ToString().hashCode());
+        IntBlockTermState bts = (IntBlockTermState) writer.writeTerm(term, termsEnum, docsSeen, norms);
+        sumTotalTermFreq += bts.totalTermFreq;
+        sumDocFreq += bts.docFreq;
+        ByteBuffer buffer = buildBuffer(key, bts);
+        byte[] arr = new byte[56];
+        buffer.position(0);
+        buffer.get(arr);
 
-				map.put(key, arr);
+        map.put(key, arr);
 
-			}
+      }
 
-			String fileName = MapPostingsFormat.getFieldMapFileName(segmentName,
-					state.segmentSuffix);
-			IndexOutput out = state.directory.createOutput(fileName,
-					state.context);
-			out.writeInt(docsSeen.cardinality());
-			out.writeInt(termCount);
-			out.writeLong(sumTotalTermFreq);
-			out.writeLong(sumDocFreq);
-			byte[] arr = map.bufferToByteArray();
-			out.writeBytes(arr, arr.length);
-			out.close();
-		}
+      String fileName = MapPostingsFormat.getFieldMapFileName(segmentName, state.segmentSuffix);
+      IndexOutput out = state.directory.createOutput(fileName, state.context);
+      out.writeInt(docsSeen.cardinality());
+      out.writeInt(termCount);
+      out.writeLong(sumTotalTermFreq);
+      out.writeLong(sumDocFreq);
+      byte[] arr = map.bufferToByteArray();
+      out.writeBytes(arr, arr.length);
+      out.close();
+    }
 
-	}
+  }
 
-	// For some reason, terms.size() throws UnsupportedOperationException
-	// Not sure if there's a better way to do this, but temporarily this works..
-	private static int countTerms(Terms t) throws IOException {
-		TermsEnum te = t.iterator();
-		int count = 0;
+  // For some reason, terms.size() throws UnsupportedOperationException
+  // Not sure if there's a better way to do this, but temporarily this works..
+  private static int countTerms(Terms t) throws IOException {
+    TermsEnum te = t.iterator();
+    int count = 0;
 
-		while (true) {
-			BytesRef term = te.next();
-			if (term == null) {
-				break;
-			}
-			++count;
-		}
+    while (true) {
+      BytesRef term = te.next();
+      if (term == null) {
+        break;
+      }
+      ++count;
+    }
 
-		return count;
-	}
+    return count;
+  }
 
-	private ByteBuffer buildBuffer(long key, IntBlockTermState bts) {
-		ByteBuffer b = ByteBuffer.allocateDirect(56);
-		b.putInt(bts.docFreq);
-		b.putLong(bts.totalTermFreq);
-		b.putLong(bts.docStartFP);
-		b.putLong(bts.skipOffset);
-		b.putInt(bts.singletonDocID);
-		b.putLong(bts.posStartFP);
-		b.putLong(bts.payStartFP);
-		b.putLong(bts.lastPosBlockOffset);
-		return b;
-	}
+  private ByteBuffer buildBuffer(long key, IntBlockTermState bts) {
+    ByteBuffer b = ByteBuffer.allocateDirect(56);
+    b.putInt(bts.docFreq);
+    b.putLong(bts.totalTermFreq);
+    b.putLong(bts.docStartFP);
+    b.putLong(bts.skipOffset);
+    b.putInt(bts.singletonDocID);
+    b.putLong(bts.posStartFP);
+    b.putLong(bts.payStartFP);
+    b.putLong(bts.lastPosBlockOffset);
+    return b;
+  }
 
-	@Override
-	public void close() throws IOException {
-		writer.close();
-	}
+  @Override
+  public void close() throws IOException {
+    writer.close();
+  }
 }
