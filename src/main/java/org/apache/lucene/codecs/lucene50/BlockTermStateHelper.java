@@ -5,7 +5,7 @@ import java.nio.ByteBuffer;
 import org.apache.lucene.codecs.BlockTermState;
 
 public class BlockTermStateHelper {
-
+//test
   public static BlockTermState buildIntBlockTermState(byte[] pointer) {
     Lucene50PostingsFormat.IntBlockTermState ibts = new Lucene50PostingsFormat.IntBlockTermState();
 
