@@ -8,7 +8,6 @@ import java.util.Map;
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsReaderBase;
-import org.apache.lucene.codecs.lucene50.BlockTermStateHelper;
 import org.apache.lucene.index.BaseTermsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.ImpactsEnum;
@@ -20,7 +19,7 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
-import org.rsankar.lucenecodecs.robinhood.RobinHoodHashMap;
+import org.rsankar.lucenecodecs.termmap.RobinHoodHashMap;
 
 public class MapFieldsReader extends FieldsProducer {
 
@@ -38,6 +37,7 @@ public class MapFieldsReader extends FieldsProducer {
 
   @Override
   public Terms terms(String field) throws IOException {
+
     MapTerms terms = termsCache.get(field);
     if (terms == null) {
       String fileName = MapPostingsFormat.getFieldMapFileName(segmentName, state.segmentSuffix);
@@ -46,6 +46,7 @@ public class MapFieldsReader extends FieldsProducer {
         terms = new MapTerms(field, in);
         termsCache.put(field, terms);
       } catch (IOException e) {
+        e.printStackTrace();
         return null;
       }
     }
@@ -97,9 +98,17 @@ public class MapFieldsReader extends FieldsProducer {
       this.sumTotalTermFreq = in.readLong();
       this.sumDocFreq = in.readLong();
 
-      byte[] arr = RobinHoodHashMap.getEmptyByteArray(termCount);
+      int capacity = in.readInt();
+      int hashcodeSizeBytes = in.readInt();
+      int fingerprintSizeBytes = in.readInt();
+      int valueSizeBytes = in.readInt();
+
+      // TODO: Switch to off-heap ByteBuffer
+      byte arr[] = new byte[capacity * (hashcodeSizeBytes + fingerprintSizeBytes + valueSizeBytes)];
       in.readBytes(arr, 0, arr.length);
-      this.map = new RobinHoodHashMap(arr);
+      this.map = new RobinHoodHashMap();
+      map.open(capacity, hashcodeSizeBytes, fingerprintSizeBytes, valueSizeBytes, arr);
+
     }
 
     @Override
@@ -138,7 +147,8 @@ public class MapFieldsReader extends FieldsProducer {
 
     @Override
     public boolean hasOffsets() {
-      return fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
+      return fieldInfo.getIndexOptions()
+          .compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
     }
 
     @Override
@@ -163,22 +173,28 @@ public class MapFieldsReader extends FieldsProducer {
     private final IndexOptions indexOptions;
 
     private RobinHoodHashMap map;
+    private MapFileReader mfr;
 
     private BlockTermState currentState;
     private BytesRef currentTerm;
 
-    private MapTermsEnum(FieldInfo fieldInfo, RobinHoodHashMap map) {
+    private MapTermsEnum(FieldInfo fieldInfo, RobinHoodHashMap map) throws IOException {
       this.fieldInfo = fieldInfo;
       this.indexOptions = fieldInfo.getIndexOptions();
       this.map = map;
+
+      String fieldDataFileName = MapPostingsFormat.getFieldDataFileName(segmentName,
+          state.segmentSuffix);
+      this.mfr = new MapFileReader(state.directory.openInput(fieldDataFileName, state.context));
     }
 
     @Override
     public boolean seekExact(BytesRef text) throws IOException {
-      long key = Long.valueOf(text.utf8ToString().hashCode());
-      byte[] pointer = map.get(key);
-      if (pointer != null) {
-        currentState = BlockTermStateHelper.buildIntBlockTermState(pointer);
+      long key = MapPostingsFormat.getKey(text);
+      int value = map.get(MapPostingsFormat.getHashcode(key, map.getCapacity()),
+          MapPostingsFormat.getFingerprint(key, map.getCapacity()));
+      if (value != -1) {
+        currentState = mfr.read(value);
         currentTerm = text;
         return true;
       } else {

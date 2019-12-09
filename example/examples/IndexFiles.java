@@ -37,8 +37,8 @@ public final class IndexFiles {
   public static void main(String[] args) {
     String usage = "java lucenetest.IndexFiles" + " [-index INDEX_PATH] [-docs DOCS_PATH]\n\n"
         + "Indexes the files in DOCS_PATH, creating a Lucene index in INDEX_PATH. Each file "
-        + "is a separate document 0 - its contents indexed as three fields (para1, para2, and " + "rest).\n\n"
-        + "The index can be searched with lucenetest.SearchFiles";
+        + "is a separate document 0 - its contents indexed as three fields (para1, para2, and "
+        + "rest).\n\n" + "The index can be searched with lucenetest.SearchFiles";
     String indexPath = "index";
     String docsPath = null;
     for (int i = 0; i < args.length; ++i) {
@@ -46,6 +46,9 @@ public final class IndexFiles {
         indexPath = args[++i];
       } else if ("-docs".equals(args[i])) {
         docsPath = args[++i];
+      } else {
+        System.err.println("Usage: " + usage);
+        System.exit(1);
       }
     }
     if (docsPath == null) {

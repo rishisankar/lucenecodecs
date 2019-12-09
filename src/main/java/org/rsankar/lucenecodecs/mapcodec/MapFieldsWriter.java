@@ -1,13 +1,11 @@
 package org.rsankar.lucenecodecs.mapcodec;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.NormsProducer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.codecs.lucene50.BlockTermStateHelper;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -17,7 +15,7 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
-import org.rsankar.lucenecodecs.robinhood.RobinHoodHashMap;
+import org.rsankar.lucenecodecs.termmap.RobinHoodHashMap;
 
 public class MapFieldsWriter extends FieldsConsumer {
 
@@ -43,9 +41,20 @@ public class MapFieldsWriter extends FieldsConsumer {
         continue;
       }
       int termCount = countTerms(terms);
-      RobinHoodHashMap map = new RobinHoodHashMap(termCount);
+      int capacity = termCount * (100 + MapPostingsFormat.EXTRA_SPACE_PERCENT) / 100;
+      int hashcodeSizeBytes = MapPostingsFormat.deriveHashcodeSizeFromCapacity(capacity);
+      int valueSizeBytes = MapPostingsFormat.deriveValueSizeFromCapacity(capacity);
+
+      RobinHoodHashMap map = new RobinHoodHashMap();
+      map.create(capacity, hashcodeSizeBytes, MapPostingsFormat.FINGERPRINT_SIZE_BYTES,
+          valueSizeBytes);
       FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
       writer.setField(fieldInfo);
+      String fieldDataFileName = MapPostingsFormat.getFieldDataFileName(segmentName,
+          state.segmentSuffix);
+
+      MapFileWriter mfw = new MapFileWriter(
+          state.directory.createOutput(fieldDataFileName, state.context));
 
       TermsEnum termsEnum = terms.iterator();
       while (true) {
@@ -54,27 +63,28 @@ public class MapFieldsWriter extends FieldsConsumer {
           break;
         }
 
-        long key = Long.valueOf(term.utf8ToString().hashCode());
+        long key = MapPostingsFormat.getKey(term);
+
         BlockTermState bts = writer.writeTerm(term, termsEnum, docsSeen, norms);
         sumTotalTermFreq += bts.totalTermFreq;
         sumDocFreq += bts.docFreq;
-        ByteBuffer buffer = BlockTermStateHelper.buildBuffer(key, bts);
-        byte[] arr = new byte[56];
-        buffer.position(0);
-        buffer.get(arr);
 
-        map.put(key, arr);
+        int value = mfw.saveToFile(bts);
 
+        map.put(MapPostingsFormat.getHashcode(key, capacity),
+            MapPostingsFormat.getFingerprint(key, capacity), value);
       }
 
-      String fileName = MapPostingsFormat.getFieldMapFileName(segmentName, state.segmentSuffix);
-      IndexOutput out = state.directory.createOutput(fileName, state.context);
+      mfw.close();
+
+      String fieldMapFileName = MapPostingsFormat.getFieldMapFileName(segmentName,
+          state.segmentSuffix);
+      IndexOutput out = state.directory.createOutput(fieldMapFileName, state.context);
       out.writeInt(docsSeen.cardinality());
       out.writeInt(termCount);
       out.writeLong(sumTotalTermFreq);
       out.writeLong(sumDocFreq);
-      byte[] arr = map.bufferToByteArray();
-      out.writeBytes(arr, arr.length);
+      map.save(out);
       out.close();
     }
 
@@ -85,7 +95,6 @@ public class MapFieldsWriter extends FieldsConsumer {
   private static int countTerms(Terms t) throws IOException {
     TermsEnum te = t.iterator();
     int count = 0;
-
     while (true) {
       BytesRef term = te.next();
       if (term == null) {

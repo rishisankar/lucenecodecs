@@ -119,8 +119,8 @@ public class SearchFiles {
    * limit, then the query is executed another time and all hits are collected.
    * 
    */
-  public static void doPagingSearch(BufferedReader in, IndexSearcher searcher, Query query, int hitsPerPage,
-      boolean raw, boolean interactive) throws IOException {
+  public static void doPagingSearch(BufferedReader in, IndexSearcher searcher, Query query,
+      int hitsPerPage, boolean raw, boolean interactive) throws IOException {
 
     // Collect enough docs to show 5 pages
     TopDocs results = searcher.search(query, 5 * hitsPerPage);
@@ -134,8 +134,8 @@ public class SearchFiles {
 
     while (true) {
       if (end > hits.length) {
-        System.out.println(
-            "Only results 1 - " + hits.length + " of " + numTotalHits + " total matching documents collected.");
+        System.out.println("Only results 1 - " + hits.length + " of " + numTotalHits
+            + " total matching documents collected.");
         System.out.println("Collect more (y/n) ?");
         String line = in.readLine();
         if (line.length() == 0 || line.charAt(0) == 'n') {

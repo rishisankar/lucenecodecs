@@ -1,39 +1,39 @@
 package org.apache.lucene.codecs.lucene50;
 
-import java.nio.ByteBuffer;
+import java.io.IOException;
 
 import org.apache.lucene.codecs.BlockTermState;
+import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.store.RandomAccessInput;
 
 public class BlockTermStateHelper {
 
-  public static BlockTermState buildIntBlockTermState(byte[] pointer) {
-    Lucene50PostingsFormat.IntBlockTermState ibts = new Lucene50PostingsFormat.IntBlockTermState();
-
-    ByteBuffer b = ByteBuffer.wrap(pointer);
-
-    ibts.docFreq = b.getInt();
-    ibts.totalTermFreq = b.getLong();
-    ibts.docStartFP = b.getLong();
-    ibts.skipOffset = b.getLong();
-    ibts.singletonDocID = b.getInt();
-    ibts.posStartFP = b.getLong();
-    ibts.payStartFP = b.getLong();
-    ibts.lastPosBlockOffset = b.getLong();
-
-    return ibts;
+  public static void writeToFile(IndexOutput out, BlockTermState bts) throws IOException {
+    Lucene50PostingsFormat.IntBlockTermState ibts = (Lucene50PostingsFormat.IntBlockTermState) bts;
+    out.writeInt(ibts.docFreq);
+    out.writeLong(ibts.totalTermFreq);
+    out.writeLong(ibts.docStartFP);
+    out.writeLong(ibts.skipOffset);
+    out.writeInt(ibts.singletonDocID);
+    out.writeLong(ibts.posStartFP);
+    out.writeLong(ibts.payStartFP);
+    out.writeLong(ibts.lastPosBlockOffset);
   }
 
-  public static ByteBuffer buildBuffer(long key, BlockTermState bts) {
-    ByteBuffer b = ByteBuffer.allocateDirect(56);
-    Lucene50PostingsFormat.IntBlockTermState ibts = (Lucene50PostingsFormat.IntBlockTermState) bts;
-    b.putInt(ibts.docFreq);
-    b.putLong(ibts.totalTermFreq);
-    b.putLong(ibts.docStartFP);
-    b.putLong(ibts.skipOffset);
-    b.putInt(ibts.singletonDocID);
-    b.putLong(ibts.posStartFP);
-    b.putLong(ibts.payStartFP);
-    b.putLong(ibts.lastPosBlockOffset);
-    return b;
+  public static BlockTermState readFromFile(IndexInput in, int index) throws IOException {
+    RandomAccessInput slice = in.randomAccessSlice(index * 56, 56);
+    Lucene50PostingsFormat.IntBlockTermState ibts = new Lucene50PostingsFormat.IntBlockTermState();
+
+    ibts.docFreq = slice.readInt(0);
+    ibts.totalTermFreq = slice.readLong(4);
+    ibts.docStartFP = slice.readLong(12);
+    ibts.skipOffset = slice.readLong(20);
+    ibts.singletonDocID = slice.readInt(28);
+    ibts.posStartFP = slice.readLong(32);
+    ibts.payStartFP = slice.readLong(40);
+    ibts.lastPosBlockOffset = slice.readLong(48);
+
+    return ibts;
   }
 }
