@@ -60,7 +60,10 @@ public class MapPostingsFormat extends PostingsFormat {
   }
 
   static long getFingerprint(long key, int capacity) {
-    return key / capacity;
+    if (key >= 0)
+      return (key / capacity) << 1;
+    else
+      return (Math.abs(key) / capacity) << 1 | 1;
   }
   
   static long getKey(BytesRef text) {
