@@ -1,3 +1,24 @@
+/**Copyright (c) 2020 Rishi Sankar
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 package examples;
 
 import java.io.BufferedReader;
@@ -11,50 +32,46 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.lucene50.Lucene50PostingsFormat;
 import org.apache.lucene.codecs.lucene80.Lucene80Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-import org.rsankar.lucenecodecs.mapcodec.MapPostingsFormat;
+import org.rsankar.lucenecodecs.field.IndexedLongField;
 
-/**
- * Index all text files under a directory. The first paragraph is indexed with
- * field name "para1", the second paragraph with field name "para2", and the
- * rest with field name "rest".
- *
- * Run it with no command-line arguments for usage information.
- */
+import examples.formats.MapPostingsFormats;
+import examples.formats.SimpleLongFormat;
+import examples.formats.SimpleTextFormat;
+import examples.formats.SpecializedLongFormat;
+
 public final class IndexFiles {
 
   public static void main(String[] args) {
-    String usage = "java lucenetest.IndexFiles" + " [-index INDEX_PATH] [-docs DOCS_PATH]\n\n"
-        + "Indexes the files in DOCS_PATH, creating a Lucene index in INDEX_PATH. Each file "
-        + "is a separate document 0 - its contents indexed as three fields (para1, para2, and "
-        + "rest).\n\n" + "The index can be searched with lucenetest.SearchFiles";
-    String indexPath = "index";
-    String docsPath = null;
-    for (int i = 0; i < args.length; ++i) {
-      if ("-index".equals(args[i])) {
-        indexPath = args[++i];
-      } else if ("-docs".equals(args[i])) {
-        docsPath = args[++i];
+
+    MapPostingsFormats format;
+    if (args.length == 0) {
+      format = MapPostingsFormats.SIMPLE_LONG_FORMAT;
+    } else {
+      if (args[0].equalsIgnoreCase("simple")) {
+        format = MapPostingsFormats.SIMPLE_LONG_FORMAT;
+      } else if (args[0].equalsIgnoreCase("specialized")) {
+        format = MapPostingsFormats.SPECIALIZED_LONG_FORMAT;
+      } else if (args[0].equalsIgnoreCase("text")) {
+        format = MapPostingsFormats.SIMPLE_TEXT_FORMAT;
       } else {
-        System.err.println("Usage: " + usage);
-        System.exit(1);
+        System.err.println("Usage: examples.IndexFiles [simple/specialized/text]");
+        return;
       }
     }
-    if (docsPath == null) {
-      System.err.println("Usage: " + usage);
-      System.exit(1);
-    }
+
+    String indexPath = "example/data/index/index_" + format;
+    String docsPath = "example/data/docs/docs_" + format;
+
     final Path docDir = Paths.get(docsPath);
     if (!Files.isReadable(docDir)) {
       System.out.println("Document directory '" + docDir.toAbsolutePath()
@@ -67,73 +84,61 @@ public final class IndexFiles {
       // FSDirectory.open() chooses the best directory implementation - which is
       // MMapDirectory for MacOS
       Directory dir = FSDirectory.open(Paths.get(indexPath));
-      Analyzer analyzer = new StandardAnalyzer();
-      IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
+      IndexWriterConfig iwc = new IndexWriterConfig();
       iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
       iwc.setUseCompoundFile(false);
-
       iwc.setCodec(new Lucene80Codec() {
         @Override
         public PostingsFormat getPostingsFormatForField(String field) {
-          return new MapPostingsFormat();
-          /*
-           * if (field.equals("para1")) return new Lucene50PostingsFormat(); else if
-           * (field.equals("para2")) /eturn new SimpleTextPostingsFormat(); else return
-           * new Lucene50PostingsFormat();
-           */
+          if (field.equals("path")) {
+            return new Lucene50PostingsFormat();
+          } else {
+            switch (format) {
+            case SIMPLE_LONG_FORMAT:
+              return new SimpleLongFormat();
+            case SPECIALIZED_LONG_FORMAT:
+              return new SpecializedLongFormat();
+            case SIMPLE_TEXT_FORMAT:
+              return new SimpleTextFormat();
+            default:
+              throw new RuntimeException(); // should never reach here...
+            }
+          }
         }
       });
 
       IndexWriter writer = new IndexWriter(dir, iwc);
-      indexDocs(writer, docDir);
-      // Merge all segments into one
-      writer.forceMerge(1);
+      indexDocs(writer, docDir, format);
+
       writer.close();
     } catch (IOException e) {
       System.out.println(" caught a " + e.getClass() + "\n with message: " + e.getMessage());
     }
   }
 
-  /**
-   * If path is a file, it indexes it, if it is a directory, it indexes all files
-   * contained within the directory.
-   */
-  static void indexDocs(IndexWriter writer, Path path) throws IOException {
+  static void indexDocs(IndexWriter writer, Path path, MapPostingsFormats format)
+      throws IOException {
     if (Files.isDirectory(path)) {
       Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
           try {
-            if (!file.getFileName().toString().equals("README.md"))
-              indexDoc(writer, file);
+            indexDoc(writer, file, format);
           } catch (IOException ignore) {
           }
           return FileVisitResult.CONTINUE;
         }
       });
     } else {
-      indexDoc(writer, path);
-    }
-  }
-
-  static String getNextParagraph(BufferedReader reader) throws IOException {
-    String result = reader.readLine();
-    if (result == null) {
-      return null;
-    }
-    for (;;) {
-      String nextLine = reader.readLine();
-      if (nextLine == null || nextLine.length() == 0) {
-        return result;
-      }
-      result += " " + nextLine;
+      indexDoc(writer, path, format);
     }
   }
 
   /**
    * Indexes a single document.
    */
-  static void indexDoc(IndexWriter writer, Path file) throws IOException {
+  static void indexDoc(IndexWriter writer, Path file, MapPostingsFormats format)
+      throws IOException {
     try (InputStream stream = Files.newInputStream(file)) {
       Document doc = new Document();
 
@@ -142,20 +147,16 @@ public final class IndexFiles {
       doc.add(pathField);
 
       BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-      String fieldName = "para1";
-
-      for (;;) {
-        String para = getNextParagraph(reader);
-        if (para == null) {
-          break;
-        }
-        doc.add(new TextField(fieldName, para, Field.Store.NO));
-        if (fieldName.equals("para1")) {
-          fieldName = "para2";
-        } else if (fieldName.equals("para2")) {
-          fieldName = "rest";
+      String line;
+      while ((line = reader.readLine()) != null) {
+        if (format == MapPostingsFormats.SIMPLE_TEXT_FORMAT) {
+          doc.add(new StringField("longs", line, Field.Store.NO));
+        } else {
+          Long l = Long.parseLong(line, 16);
+          doc.add(new IndexedLongField("longs", l, Field.Store.NO));
         }
       }
+
       System.out.println("Adding " + file + " . . .");
       writer.addDocument(doc);
     }

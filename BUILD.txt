@@ -1,0 +1,17 @@
+Build using gradle. See SYSTEM_REQUIREMENTS.txt for version requirements of dependencies.
+
+Example:
+
+1) Create folders in example/data: index/index_simple, index/index_specialized, index/index_text
+2) Run examples.IndexFiles [simple/specialized/text] to build the indexes using the provided example MapPostingsFormat implementations
+3) Run examples.SearchFiles [simple/specialized/text] to search individual queries on the built indexes.
+
+Benchmark:
+
+1) Create folders in benchmark/data: index/data1000000/map, index/data1000000/default
+2) Run benchmarks.Index [map/default] to build indexes using either a MapPostingsFormat implementation or the default Lucene PostingsFormat
+3) Run benchmarks.PerfTest [map/default] to run a performance test benchmark on either index. See the output for "elapsed" for time (ns) to perform 100000 searches.
+Optional:
+4) Run benchmarks.Search [map/default] to run individual queries on the built indexes.
+5) Run VerifyCorrectness after building both indexes to (slowly) compare searches using the default and map PostingsFormats. 
+ 

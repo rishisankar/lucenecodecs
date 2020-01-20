@@ -1,0 +1,3 @@
+Apache Lucene 8.2.0 (Core, Codecs)
+JUnit 4.12 / Hamcrest 1.3
+Java 9

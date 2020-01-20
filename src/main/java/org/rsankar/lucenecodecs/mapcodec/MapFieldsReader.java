@@ -1,3 +1,24 @@
+/**Copyright (c) 2020 Rishi Sankar
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 package org.rsankar.lucenecodecs.mapcodec;
 
 import java.io.IOException;
@@ -27,12 +48,16 @@ public class MapFieldsReader extends FieldsProducer {
   PostingsReaderBase reader;
   String segmentName;
 
+  MapPostingsFormat postingsFormat;
+
   private final Map<String, MapTerms> termsCache = new HashMap<String, MapTerms>();
 
-  public MapFieldsReader(SegmentReadState state, PostingsReaderBase reader) {
+  public MapFieldsReader(SegmentReadState state, PostingsReaderBase reader,
+      MapPostingsFormat postingsFormat) {
     this.state = state;
     this.reader = reader;
     this.segmentName = state.segmentInfo.name;
+    this.postingsFormat = postingsFormat;
   }
 
   @Override
@@ -83,38 +108,43 @@ public class MapFieldsReader extends FieldsProducer {
   private class MapTerms extends Terms {
     private FieldInfo fieldInfo;
 
-    private int docCount;
-    private int termCount;
-    private long sumTotalTermFreq;
-    private long sumDocFreq;
+    private int docCount, termCount;
 
     private RobinHoodHashMap map;
+
+    private int k, capacity;
+
+    private IndexInput dataFile;
 
     private MapTerms(String field, IndexInput in) throws IOException {
       this.fieldInfo = state.fieldInfos.fieldInfo(field);
 
-      this.docCount = in.readInt();
-      this.termCount = in.readInt();
-      this.sumTotalTermFreq = in.readLong();
-      this.sumDocFreq = in.readLong();
+      this.docCount = in.readVInt();
+      this.termCount = in.readVInt();
+      int k = in.readVInt();
 
-      int capacity = in.readInt();
-      int hashcodeSizeBytes = in.readInt();
-      int fingerprintSizeBytes = in.readInt();
-      int valueSizeBytes = in.readInt();
+      int capacity = in.readVInt();
+      this.k = k;
+      this.capacity = capacity;
+      postingsFormat.setCapacity(capacity);
+      int distSizeBytes = in.readVInt();
+      int fingerprintSizeBytes = in.readVInt();
+      int valueSizeBytes = in.readVInt();
 
-      // TODO: Switch to off-heap ByteBuffer
-      byte arr[] = new byte[capacity * (hashcodeSizeBytes + fingerprintSizeBytes + valueSizeBytes)];
+      // TODO: Switch to off-heap ByteBuffer - use RandomAccessSlice
+      byte arr[] = new byte[capacity * (distSizeBytes + fingerprintSizeBytes + valueSizeBytes)];
       in.readBytes(arr, 0, arr.length);
       this.map = new RobinHoodHashMap();
-      map.open(capacity, hashcodeSizeBytes, fingerprintSizeBytes, valueSizeBytes, arr);
+      map.open(capacity, distSizeBytes, fingerprintSizeBytes, valueSizeBytes, arr);
 
+      this.dataFile = state.directory.openInput(
+          MapPostingsFormat.getFieldDataFileName(segmentName, state.segmentSuffix), state.context);
     }
 
     @Override
     public TermsEnum iterator() throws IOException {
       if (map != null) {
-        return new MapTermsEnum(fieldInfo, map);
+        return new MapTermsEnum(fieldInfo, map, k, capacity, dataFile);
       } else {
         return TermsEnum.EMPTY;
       }
@@ -132,12 +162,12 @@ public class MapFieldsReader extends FieldsProducer {
 
     @Override
     public long getSumTotalTermFreq() throws IOException {
-      return sumTotalTermFreq;
+      throw new UnsupportedOperationException();
     }
 
     @Override
     public long getSumDocFreq() throws IOException {
-      return sumDocFreq;
+      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -160,17 +190,13 @@ public class MapFieldsReader extends FieldsProducer {
     public boolean hasPayloads() {
       return fieldInfo.hasPayloads();
     }
-
-    @Override
-    public String toString() {
-      return getClass().getSimpleName() + "(terms=" + termCount + ",postings=" + sumDocFreq
-          + ",positions=" + sumTotalTermFreq + ",docs=" + docCount + ")";
-    }
   }
 
   private class MapTermsEnum extends BaseTermsEnum {
     private FieldInfo fieldInfo;
     private final IndexOptions indexOptions;
+    private final int k;
+    private final int capacity;
 
     private RobinHoodHashMap map;
     private MapFileReader mfr;
@@ -178,26 +204,28 @@ public class MapFieldsReader extends FieldsProducer {
     private BlockTermState currentState;
     private BytesRef currentTerm;
 
-    private MapTermsEnum(FieldInfo fieldInfo, RobinHoodHashMap map) throws IOException {
+    private MapTermsEnum(FieldInfo fieldInfo, RobinHoodHashMap map, int k, int capacity,
+        IndexInput in) throws IOException {
       this.fieldInfo = fieldInfo;
       this.indexOptions = fieldInfo.getIndexOptions();
       this.map = map;
+      this.k = k;
+      this.capacity = capacity;
 
-      String fieldDataFileName = MapPostingsFormat.getFieldDataFileName(segmentName,
-          state.segmentSuffix);
-      this.mfr = new MapFileReader(state.directory.openInput(fieldDataFileName, state.context));
+      this.mfr = new MapFileReader(in);
     }
 
     @Override
     public boolean seekExact(BytesRef text) throws IOException {
-      long key = MapPostingsFormat.getKey(text);
-      int value = map.get(MapPostingsFormat.getHashcode(key, map.getCapacity()),
-          MapPostingsFormat.getFingerprint(key, map.getCapacity()));
+      long fingerprint = postingsFormat.getFingerprint(text);
+      int value = map.get(ParameterAnalyzer.getHashcode(fingerprint, k, capacity),
+          fingerprint & 0xff);
       if (value != -1) {
         currentState = mfr.read(value);
         currentTerm = text;
         return true;
       } else {
+        currentTerm = null;
         return false;
       }
     }
@@ -238,22 +266,22 @@ public class MapFieldsReader extends FieldsProducer {
 
     @Override
     public BytesRef next() throws IOException {
-      throw new RuntimeException("next() called in MapFieldsReader.MapTermsEnum");
+      throw new UnsupportedOperationException();
     }
 
     @Override
     public SeekStatus seekCeil(BytesRef text) throws IOException {
-      throw new RuntimeException("seekCeil() called in MapFieldsReader.MapTermsEnum");
+      throw new UnsupportedOperationException();
     }
 
     @Override
     public long ord() throws IOException {
-      throw new RuntimeException("ord() called in MapFieldsReader.MapTermsEnum");
+      throw new UnsupportedOperationException();
     }
 
     @Override
     public void seekExact(long ord) throws IOException {
-      throw new RuntimeException("seexExact(long ord) called in MapFieldsReader.MapTermsEnum");
+      throw new UnsupportedOperationException();
     }
   }
 

@@ -1,1 +1,4 @@
-org.rsankar.lucenecodecs.mapcodec.MapPostingsFormat
+examples.formats.SimpleLongFormat
+examples.formats.SpecializedLongFormat
+examples.formats.SimpleTextFormat
+benchmarks.BenchmarkFormat

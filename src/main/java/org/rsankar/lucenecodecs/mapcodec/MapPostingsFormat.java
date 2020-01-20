@@ -1,3 +1,24 @@
+/**Copyright (c) 2020 Rishi Sankar
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 package org.rsankar.lucenecodecs.mapcodec;
 
 import java.io.IOException;
@@ -13,27 +34,26 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.util.BytesRef;
 
-public class MapPostingsFormat extends PostingsFormat {
+public abstract class MapPostingsFormat extends PostingsFormat {
   public static final String FIELD_MAP_EXTENSION = "fme";
   public static final String FIELD_DATA_EXTENSION = "fde";
 
-  public static final int EXTRA_SPACE_PERCENT = 20;
-  public static final int FINGERPRINT_SIZE_BYTES = 6;
+  private int capacity;
 
-  public MapPostingsFormat() {
-    super("MapPostingsFormat");
+  public MapPostingsFormat(String name) {
+    super(name);
   }
 
   @Override
   public FieldsConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
     PostingsWriterBase pw = new Lucene50PostingsWriter(state);
-    return new MapFieldsWriter(state, pw);
+    return new MapFieldsWriter(state, pw, this);
   }
 
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
     PostingsReaderBase pr = new Lucene50PostingsReader(state);
-    return new MapFieldsReader(state, pr);
+    return new MapFieldsReader(state, pr, this);
   }
 
   static String getFieldMapFileName(String segmentName, String segmentSuffix) {
@@ -44,29 +64,13 @@ public class MapPostingsFormat extends PostingsFormat {
     return segmentName + "_" + segmentSuffix + "." + FIELD_DATA_EXTENSION;
   }
 
-  static int deriveHashcodeSizeFromCapacity(int capacity) {
-    if (capacity == 0)
-      return 1;
-    else
-      return 1 + deriveHashcodeSizeFromCapacity(capacity >> 8);
+  public void setCapacity(int capacity) {
+    this.capacity = capacity;
   }
 
-  static int deriveValueSizeFromCapacity(int capacity) {
-    return deriveHashcodeSizeFromCapacity(capacity << 1);
+  public int capacity() {
+    return this.capacity;
   }
 
-  static int getHashcode(long key, int capacity) {
-    return (int) (key >= 0 ? key % capacity : -key % capacity);
-  }
-
-  static long getFingerprint(long key, int capacity) {
-    if (key >= 0)
-      return (key / capacity) << 1;
-    else
-      return (Math.abs(key) / capacity) << 1 | 1;
-  }
-  
-  static long getKey(BytesRef text) {
-    return Long.valueOf(text.utf8ToString().hashCode());
-  }
+  public abstract long getFingerprint(BytesRef term);
 }
